@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e1420">
+<title>Glasses Translator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: calm, glanceable, one-handed — a tool used mid-conversation
+   IDEA: an interpreter's cue card held up beside you
+   PICTURE: the live cue card — big current chunk, others dimmed
+   COLOUR/TYPE: night ink ground, coral = them, teal = me; Atkinson Hyperlegible
+   LAYOUT: one column, transcript scrolls, cue card + controls pinned to thumb zone */
+:root{color-scheme:light dark;
+--bg:light-dark(#f4f6f9,#0e1420);--card:light-dark(#fff,#18202f);--ink:light-dark(#111827,#eef2f7);
+--mute:light-dark(#5b6575,#93a0b4);--line:light-dark(#dde2ea,#263045);
+--them:#ff5a36;--me:light-dark(#08876f,#22c7a4);--hi:light-dark(#fff3c4,#3a3417);--live:#1fbf5b}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 "Atkinson Hyperlegible",system-ui,sans-serif;display:flex;flex-direction:column;overflow-x:clip}
+header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+select,input[type=text],input[type=email]{font:inherit;font-size:16px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+#pairQuick{max-width:42vw}
+button{font:inherit;font-weight:700;border-radius:14px;min-height:48px;padding:0 16px;cursor:pointer;color:var(--ink);background:var(--card);border:1px solid var(--line)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--me);outline-offset:2px}
+button[hidden]{display:none}
+.icon{min-width:48px;padding:0 12px}
+#bar{display:flex;align-items:center;gap:10px;padding:8px 16px}
+#mic{flex:none;font-size:13px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--mute);white-space:nowrap}
+#mic::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--mute);margin-right:6px;vertical-align:1px}
+#mic[data-s=wait]{color:#c98a00;border-color:#c98a00}#mic[data-s=wait]::before{background:#e0a100;animation:p 1s infinite}
+#mic[data-s=live]{color:var(--live);border-color:var(--live)}#mic[data-s=live]::before{background:var(--live);animation:p 1.6s infinite}
+@keyframes p{50%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){#mic::before{animation:none!important}}
+#status{font-size:14px;color:var(--mute);flex:1}
+#log{flex:1;overflow-y:auto;padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.empty{color:var(--mute);margin:auto;text-align:center;max-width:30em;padding:24px 0}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;max-width:92%}
+.msg.them{border-left:5px solid var(--them);align-self:flex-start}
+.msg.me{border-right:5px solid var(--me);align-self:flex-end;text-align:right}
+.msg small{display:block;color:var(--mute);font-size:14px}
+.msg b{display:block;font-size:20px;margin-top:2px}
+.msg .re{font-size:14px;margin-top:6px;background:none;border:0;min-height:36px;padding:0;color:var(--mute);text-decoration:underline}
+#interim{font-style:italic;color:var(--mute);padding:0 16px 6px;min-height:0;font-size:16px}
+#coach{display:none;background:var(--card);border-top:3px solid var(--me);padding:14px 16px}
+#coach.on{display:block}
+#coach .eng{color:var(--mute);font-size:14px;margin-bottom:8px}
+#chunks{display:flex;flex-wrap:wrap;gap:8px 10px;margin-bottom:12px}
+.ch{font-size:20px;padding:4px 10px;border-radius:10px;color:var(--mute);border:1px solid transparent}
+.ch.done{color:var(--ink)}
+.ch.cur{font-size:clamp(28px,8vw,40px);font-weight:700;color:var(--ink);background:var(--hi);border-color:var(--me)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1}
+footer{padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);display:grid;gap:10px}
+.big{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.big button{min-height:76px;font-size:19px;line-height:1.15;color:#fff;border:0}
+.big button b{display:block}
+.big button span{display:block;font-weight:400;font-size:13px;opacity:.92}
+#bListen{background:var(--them)}#bListen.on{background:#b3361b}
+#bReply{background:var(--me)}#bReply.on{background:#05584a}
+form.type{display:flex;gap:8px}form.type input{flex:1}
+dialog{border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--ink);width:min(540px,94vw);max-height:88vh;padding:18px}
+dialog::backdrop{background:#0008}
+dialog h3{margin:18px 0 0;font-size:16px;color:var(--mute)}
+dialog label{display:block;margin:12px 0 4px;font-weight:700}
+dialog .hint{font-size:14px;color:var(--mute);margin:4px 0 0}
+dialog select,dialog input[type=email]{width:100%}
+.chk{display:flex;gap:10px;align-items:center;font-weight:400!important}
+.chk input{width:22px;height:22px;flex:none}
+details{margin-top:16px}summary{cursor:pointer;font-weight:700;min-height:36px}
+#diag{font:12px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:240px;overflow:auto;margin:8px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Translator</h1>
+  <select id="pairQuick" aria-label="Their language"></select>
+  <button id="bEnd" hidden>End</button>
+  <button class="icon" id="bSet" aria-label="Settings">⚙</button>
+</header>
+<div id="bar"><span id="mic" data-s="off">Mic off</span><span id="status">Connect your glasses, then tap Listen.</span></div>
+<div id="log"><p class="empty" id="empty">Tap <b>Listen</b> and wait for <b>Mic live</b> (you'll hear a beep).<br>They talk → you hear English as they go.<br>Tap <b>Stop</b> when they're done → say your reply in English → you hear it in their language a few words at a time. Then it goes back to listening by itself.</p></div>
+<div id="interim" aria-live="polite"></div>
+
+<section id="coach" aria-live="polite">
+  <div class="eng" id="coachEng"></div>
+  <div id="chunks"></div>
+  <div class="row">
+    <button id="cBack" aria-label="Previous chunk">◀ Back</button>
+    <button id="cRep">Repeat</button>
+    <button id="cNext">Next ▶</button>
+    <button id="cDone">Done</button>
+  </div>
+</section>
+
+<footer>
+  <div class="big">
+    <button id="bListen"><b>Listen</b><span>them → English</span></button>
+    <button id="bReply"><b>My reply</b><span>English → coach me</span></button>
+  </div>
+  <form class="type" id="typeForm">
+    <input type="text" id="typeIn" placeholder="Or type what you want to say…" autocomplete="off" enterkeyhint="go">
+    <button type="submit">Go</button>
+  </form>
+</footer>
+
+<dialog id="dlg">
+  <h2 style="margin:0 0 4px;font-size:22px">Settings</h2>
+  <label for="sLang">Their language</label>
+  <select id="sLang"></select>
+
+  <h3>Listening to them</h3>
+  <label for="sPause">Translate when they pause for</label>
+  <select id="sPause"><option value="0.8">0.8 sec (fastest)</option><option value="1.2">1.2 sec</option><option value="2">2 sec (fewer cut-offs)</option><option value="0">Only when the phone decides</option></select>
+  <label for="sMute">While English plays in my ear</label>
+  <select id="sMute"><option value="0">Keep listening (live — catches everything)</option><option value="1">Pause the mic (use if you hear no English)</option></select>
+  <p class="hint">If the English voice goes silent or quiet while listening, switch to “Pause the mic.”</p>
+  <label for="sEnRate">English voice speed</label>
+  <select id="sEnRate"><option value="1">Normal</option><option value="1.1">A bit faster</option><option value="1.3">Fast</option></select>
+  <label class="chk"><input type="checkbox" id="sSpeakEn"> Read their words to me in English</label>
+  <label class="chk"><input type="checkbox" id="sBeeps"> Beep when the mic is ready</label>
+
+  <h3>My reply</h3>
+  <label for="sReplyPause">Send my reply after I pause for</label>
+  <select id="sReplyPause"><option value="1.2">1.2 sec</option><option value="1.8">1.8 sec</option><option value="2.5">2.5 sec</option><option value="0">Only when I tap Send</option></select>
+  <label for="sChunk">Words per chunk</label>
+  <select id="sChunk"><option value="2">2</option><option value="3">3</option><option value="4">3–4</option><option value="5">4–5</option></select>
+  <label for="sRate">Coaching speed</label>
+  <select id="sRate"><option value="0.6">Very slow</option><option value="0.75">Slow</option><option value="0.9">Relaxed</option><option value="1">Normal</option></select>
+  <label for="sMode">After each chunk</label>
+  <select id="sMode"><option value="auto">Pause so I can repeat, then continue</option><option value="manual">Wait for me to tap Next</option></select>
+  <label for="sGap">Pause length</label>
+  <select id="sGap"><option value="0.6">Short</option><option value="1">Normal</option><option value="1.5">Long</option><option value="2.2">Extra long</option></select>
+  <label class="chk"><input type="checkbox" id="sPreview"> Play the full sentence once before the chunks</label>
+
+  <h3>Translation</h3>
+  <label for="sEmail">Email for the backup service (optional)</label>
+  <input type="email" id="sEmail" placeholder="you@example.com">
+  <p class="hint">Translations use Google's free service. If that fails, MyMemory is the backup; an email raises its free daily limit.</p>
+
+  <details id="diagBox"><summary>Mic log (for troubleshooting)</summary>
+    <div id="diag"></div>
+    <button id="dCopy" type="button">Copy log</button>
+  </details>
+  <div class="row" style="margin-top:16px"><button id="dClear" type="button">Clear history</button><button id="dClose" type="button" style="background:var(--me);color:#fff;border:0">Save</button></div>
+</dialog>
+
+<script>
+{
+/* ================= basics ================= */
+const LANGS=[
+ ["Spanish (Mexico)","es-MX","es"],["Spanish (Spain)","es-ES","es"],["Spanish (US)","es-US","es"],
+ ["Portuguese (Brazil)","pt-BR","pt"],["French","fr-FR","fr"],["Italian","it-IT","it"],["German","de-DE","de"],
+ ["Chinese (Mandarin)","zh-CN","zh"],["Japanese","ja-JP","ja"],["Korean","ko-KR","ko"],["Arabic","ar-SA","ar"],
+ ["Russian","ru-RU","ru"],["Vietnamese","vi-VN","vi"],["Tagalog","fil-PH","tl"],["Hindi","hi-IN","hi"]];
+const ME={rec:"en-US",tr:"en"};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store={get(k,d){try{const v=localStorage.getItem("gt_"+k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem("gt_"+k,JSON.stringify(v))}catch{}}};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+
+const DEF={lang:0,chunk:"4",rate:"0.75",mode:"auto",gap:"1",preview:false,speakEn:true,email:"",pause:"1.2",mute:false,enRate:"1.1",beeps:true,replyPause:"1.8"};
+let S=Object.assign({},DEF,store.get("settings",{}));
+let history=store.get("history",[]);
+const them=()=>({rec:LANGS[S.lang][1],tr:LANGS[S.lang][2],name:LANGS[S.lang][0]});
+
+/* ================= settings ================= */
+const opts=LANGS.map((l,i)=>`<option value="${i}">${esc(l[0])}</option>`).join("");
+$("sLang").innerHTML=opts;$("pairQuick").innerHTML=opts;
+const F={sLang:"lang",sChunk:"chunk",sRate:"rate",sMode:"mode",sGap:"gap",sPause:"pause",sEnRate:"enRate",sReplyPause:"replyPause",sEmail:"email"};
+const CK={sPreview:"preview",sSpeakEn:"speakEn",sBeeps:"beeps"};
+function loadSettingsUI(){for(const id in F)$(id).value=S[F[id]];for(const id in CK)$(id).checked=!!S[CK[id]];$("sMute").value=S.mute?"1":"0";$("pairQuick").value=S.lang}
+function readSettingsUI(){for(const id in F)S[F[id]]=$(id).value;S.lang=+S.lang;S.email=String(S.email).trim();for(const id in CK)S[CK[id]]=$(id).checked;S.mute=$("sMute").value==="1";store.set("settings",S)}
+loadSettingsUI();
+
+/* ================= diagnostics ================= */
+const diag=[],T0=Date.now();
+function dlog(m){const line=((Date.now()-T0)/1000).toFixed(1).padStart(7)+"s  "+m;diag.push(line);if(diag.length>150)diag.shift();if($("dlg").open)$("diag").textContent=diag.slice().reverse().join("\n")}
+dlog("loaded — "+(IOS?"iPhone/iPad":"not iOS")+" — "+navigator.userAgent.slice(0,110));
+
+/* ================= status / indicators ================= */
+function status(t){$("status").textContent=t}
+function micLight(s){const m=$("mic");m.dataset.s=s;m.textContent={off:"Mic off",wait:"Mic starting…",live:"Mic live"}[s]}
+function showInterim(t){$("interim").textContent=t?"… "+t:""}
+
+/* ================= audio out ================= */
+let actx=null;
+function unlockAudio(){ /* must run inside a tap: lets speech + beeps play later */
+  try{const u=new SpeechSynthesisUtterance(" ");u.volume=0;speechSynthesis.speak(u)}catch{}
+  if(S.beeps){try{if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)actx=new AC()}if(actx&&actx.state==="suspended")actx.resume()}catch{}}
+}
+function beep(freqs){
+  if(!S.beeps||!actx)return;
+  try{let t=actx.currentTime+0.02;for(const f of freqs){const o=actx.createOscillator(),g=actx.createGain();o.type="sine";o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.2,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+0.13);
+    o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.15);t+=0.14}}catch{}
+}
+let voices=[];const loadV=()=>{try{voices=speechSynthesis.getVoices()}catch{}};
+if("speechSynthesis" in window){loadV();try{speechSynthesis.onvoiceschanged=loadV}catch{}}
+function pickVoice(lang){const l=lang.toLowerCase(),b=l.split("-")[0];
+  return voices.find(v=>v.lang.toLowerCase().replace("_","-")===l)||voices.find(v=>v.lang.toLowerCase().startsWith(b))}
+let ttsActive=0,lastTtsEnd=0;
+function speak(text,lang,rate=1){return new Promise(res=>{
+  if(!("speechSynthesis" in window)||!text)return res();
+  const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.rate=rate;const v=pickVoice(lang);if(v)u.voice=v;
+  let done=false;ttsActive++;
+  const fin=()=>{if(done)return;done=true;clearTimeout(t);ttsActive--;lastTtsEnd=Date.now();res()};
+  const t=setTimeout(fin,2500+text.length*140/rate);
+  u.onend=fin;u.onerror=fin;
+  try{speechSynthesis.speak(u)}catch{fin()}})}
+function hush(){try{speechSynthesis.cancel()}catch{}}
+
+/* ================= translation (no API key) ================= */
+const tCache={};
+function fetchT(url,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(t))}
+const within=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
+async function translate(text,from,to){
+  if(from===to)return text;
+  const k=from+">"+to;
+  /* 1. Chrome's on-device translator, only if that language pack is already downloaded */
+  try{if("Translator" in self&&tCache[k]!==false){
+    if(!tCache[k]){const a=await within(Translator.availability({sourceLanguage:from,targetLanguage:to}),2000);
+      tCache[k]=a==="available"?await within(Translator.create({sourceLanguage:from,targetLanguage:to}),2000):false}
+    if(tCache[k])return await within(tCache[k].translate(text),2500)}}catch{tCache[k]=false}
+  /* 2. Google's free keyless endpoint (unofficial) */
+  try{const g=await fetchT(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`,6000);
+    if(g.ok){const d=await g.json();const out=(d?.[0]||[]).map(p=>p?.[0]||"").join("").trim();if(out)return out}}catch(e){dlog("google translate failed: "+e.message)}
+  /* 3. MyMemory backup, preferring its machine translation over crowd matches */
+  let url=`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0,480))}&langpair=${from}|${to}&mt=1`;
+  if(S.email)url+="&de="+encodeURIComponent(S.email);
+  const r=await fetchT(url,8000);if(!r.ok)throw new Error("translation service "+r.status);
+  const j=await r.json();const ms=Array.isArray(j?.matches)?j.matches:[];
+  const mt=ms.find(m=>/^MT/i.test(m["created-by"]||m["created_by"]||""));
+  const out=(mt&&mt.translation)||j?.responseData?.translatedText;
+  if(!out||/MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(out))throw new Error(j?.responseDetails||"daily free limit reached");
+  const ta=document.createElement("textarea");ta.innerHTML=out;return ta.value;
+}
+
+/* ================= text helpers ================= */
+const normW=w=>w.toLowerCase().replace(/[^\p{L}\p{N}']/gu,"");
+const wordsOf=t=>String(t).split(/\s+/).map(normW).filter(Boolean);
+/* what's new in `full` compared with the part we already sent */
+function remainder(full,sent){
+  full=full.trim();if(!sent)return full;
+  if(full.toLowerCase().startsWith(sent.toLowerCase()))return full.slice(sent.length).replace(/^[\s,.;:!?]+/,"").trim();
+  const Fw=full.split(/\s+/),n=sent.split(/\s+/).filter(Boolean).length;
+  return Fw.length>n?Fw.slice(n).join(" "):"";
+}
+const recentSent=[];
+function isDup(t){const k=wordsOf(t).join(" "),now=Date.now();while(recentSent.length&&now-recentSent[0].t>6000)recentSent.shift();
+  if(!k||recentSent.some(x=>x.k===k))return true;recentSent.push({t:now,k});return false}
+const spokenRecent=[];
+/* echo = words caught while (or just after) our own English was playing, that match that English */
+function isEcho(en,at){const w=wordsOf(en);if(!w.length)return false;
+  const pool=new Set(spokenRecent.filter(x=>at>=x.t0-300&&at<=x.t1+2000).flatMap(x=>x.w));
+  return pool.size>0&&w.filter(x=>pool.has(x)).length/w.length>=0.7}
+
+function chunkify(text,langTr){
+  const [lo,hi]={"2":[2,2],"3":[3,3],"4":[3,4],"5":[4,5]}[S.chunk]||[3,4];
+  const cjk=/^(zh|ja)/.test(langTr);
+  const phrases=text.split(/(?<=[,.;:!?¿¡。、，！？])\s*/).map(s=>s.trim()).filter(Boolean);
+  const out=[];
+  for(const p of phrases){
+    const w=cjk?[...p.replace(/\s+/g,"")]:p.split(/\s+/);
+    const size=cjk?hi*2:hi,min=cjk?lo*2:lo;
+    if(w.length<=size+1){out.push(w.join(cjk?"":" "));continue}
+    const n=Math.ceil(w.length/size),per=Math.max(min,Math.ceil(w.length/n));
+    for(let i=0;i<w.length;i+=per)out.push(w.slice(i,i+per).join(cjk?"":" "));
+    const last=out[out.length-1];if(!cjk&&last.split(" ").length===1&&out.length>1){out.pop();out[out.length-1]+=" "+last}
+  }
+  return out;
+}
+
+/* ================= transcript ================= */
+function renderLog(){
+  $("empty").style.display=history.length?"none":"";
+  [...$("log").querySelectorAll(".msg")].forEach(n=>n.remove());
+  $("log").insertAdjacentHTML("beforeend",history.map((h,i)=>h.who==="them"
+    ?`<div class="msg them"><small>${esc(h.src)}</small><b>${esc(h.tr)}</b><button class="re" data-i="${i}">Hear again</button></div>`
+    :`<div class="msg me"><small>${esc(h.src)}</small><b>${esc(h.tr)}</b><button class="re" data-i="${i}">Coach me again</button></div>`).join(""));
+  $("log").scrollTop=$("log").scrollHeight;
+}
+function addLog(e){history.push(e);if(history.length>80)history=history.slice(-80);store.set("history",history);renderLog()}
+
+/* =================================================================
+   MIC CONTROLLER — one speech session at a time, never two.
+   It only reports "live" once the phone is actually sending audio,
+   and it cuts their speech into phrases on short pauses so long
+   talking gets translated as it goes.
+   ================================================================= */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const Mic={r:null,want:null,starting:false,closingP:null};
+let micGen=0,segTimer=0,firstMic=true,everLive=false,lastOpen=0;
+
+function killRec(){
+  const r=Mic.r;if(!r)return;Mic.r=null;
+  r.onresult=r.onerror=r.onstart=r.onaudiostart=r.onsoundstart=r.onspeechstart=null;
+  let p;p=new Promise(res=>{r.onend=()=>res();setTimeout(res,700)}).then(()=>{if(Mic.closingP===p)Mic.closingP=null});
+  Mic.closingP=p;
+  try{r.abort()}catch{}
+}
+function micStop(flush){
+  if(flush&&Mic.r)flushSegment(Mic.r);
+  micGen++;Mic.want=null;Mic.starting=false;clearTimeout(segTimer);killRec();micLight("off");showInterim("");
+}
+function micStart(want){
+  const gen=++micGen;Mic.want=want;
+  if(!Mic.r&&!Mic.closingP){openRec(want);return}   /* nothing to close: open right away (keeps it inside the tap) */
+  Mic.starting=true;micLight("wait");
+  (async()=>{killRec();if(Mic.closingP)await Mic.closingP;await sleep(150);
+    if(gen!==micGen)return;Mic.starting=false;openRec(want)})();
+}
+function openRec(want){
+  const r=new SR();Mic.r=r;r._want=want;r._done={};r._int={};r._live=false;r._lastFinal="";
+  r._t0=r._lastEvt=lastOpen=performance.now();
+  r.lang=want.lang;r.continuous=!!want.continuous;r.interimResults=true;r.maxAlternatives=1;
+  micLight("wait");
+  const live=()=>{if(r._live||Mic.r!==r)return;r._live=true;everLive=true;firstMic=false;micLight("live");dlog("mic live ("+r.lang+")");want.onLive&&want.onLive()};
+  r.onstart=()=>{if(Mic.r!==r)return;dlog("session started ("+r.lang+")");r._lastEvt=performance.now();if(!firstMic)setTimeout(live,1000)};
+  r.onaudiostart=live;r.onsoundstart=live;r.onspeechstart=live;
+  r.onresult=e=>{if(Mic.r!==r)return;r._lastEvt=performance.now();live();onResults(r,e)};
+  r.onerror=e=>{if(Mic.r!==r)return;dlog("mic error: "+e.error);micError(e.error)};
+  r.onend=()=>{if(Mic.r!==r)return;Mic.r=null;clearTimeout(segTimer);dlog("session ended ("+r.lang+")");micLight("off");
+    flushSegment(r);if(Mic.want===want)want.onEnd&&want.onEnd()};
+  try{r.start();dlog("opening mic ("+want.lang+")")}
+  catch(err){dlog("start() failed: "+err.message);Mic.r=null;micLight("off");setTimeout(()=>{if(Mic.want===want)want.onEnd&&want.onEnd()},500)}
+}
+function pendingText(r){return Object.keys(r._int).map(Number).sort((a,b)=>a-b).map(i=>remainder(r._int[i],r._done[i]||"")).filter(Boolean).join(" ")}
+function emit(r,text){r._want.onPhrase(text,{at:Date.now(),duringTTS:ttsActive>0||Date.now()-lastTtsEnd<2000})}
+function flushSegment(r){
+  const parts=[];
+  for(const i of Object.keys(r._int).map(Number).sort((a,b)=>a-b)){const add=remainder(r._int[i],r._done[i]||"");if(add){parts.push(add);r._done[i]=r._int[i]}}
+  if(Mic.r===r||!Mic.r)showInterim("");
+  if(parts.length)emit(r,parts.join(" "));
+}
+/* while our English is playing (or just after), swallow words that are just that English coming back */
+const echoWindow=()=>ttsActive>0||Date.now()-lastTtsEnd<1800;
+function consumeEcho(r){
+  for(const i of Object.keys(r._int)){const rem=remainder(r._int[i],r._done[i]||"");
+    if(rem&&isEcho(rem,Date.now())){r._done[i]=r._int[i];dlog("dropped echo words: "+rem)}}
+}
+function onResults(r,e){
+  const want=r._want;
+  for(let i=e.resultIndex;i<e.results.length;i++){
+    const res=e.results[i],t=((res[0]&&res[0].transcript)||"").trim();if(!t)continue;
+    if(res.isFinal){
+      delete r._int[i];
+      let base=r._done[i]||"";
+      if(!base&&r._lastFinal&&t.toLowerCase().startsWith(r._lastFinal.toLowerCase()))base=r._lastFinal; /* phones that repeat earlier words */
+      const add=remainder(t,base);r._done[i]=t;r._lastFinal=t;
+      if(add&&want.echoGuard&&echoWindow()&&isEcho(add,Date.now()))dlog("dropped echo: "+add);
+      else if(add)emit(r,add);
+    }else r._int[i]=t;
+  }
+  if(want.echoGuard&&echoWindow())consumeEcho(r);
+  const pend=pendingText(r);showInterim(pend);
+  want.onActivity&&want.onActivity();
+  clearTimeout(segTimer);
+  if(pend&&want.silenceMs>0){
+    if(pend.split(/\s+/).length>=24)flushSegment(r);   /* nonstop talker: don't wait forever */
+    else segTimer=setTimeout(()=>{if(Mic.r===r)flushSegment(r)},want.silenceMs);
+  }
+}
+function micError(code){
+  if(code==="not-allowed"||code==="service-not-allowed"){
+    let msg;
+    if(everLive)msg="The phone paused the mic. Tap Listen to keep going.";
+    else if(code==="service-not-allowed"&&IOS)msg="Speech recognition is off. iPhone: Settings → General → Keyboard → turn on Enable Dictation, then reload.";
+    else msg=IOS?"Microphone blocked. In Safari tap aA → Website Settings → Microphone → Allow, then tap Listen."
+                :"Microphone blocked. Tap the icon left of the web address → Permissions → Microphone → Allow, then tap Listen.";
+    if(replyState){replyState.sent=true;replyState=null}
+    micStop(false);pausedForTTS=false;mode="idle";paint();status(msg);
+  }else if(code==="audio-capture")status("Can't get sound from the mic — retrying…");
+  else if(code==="network")status("Speech service unreachable — check your signal. Retrying…");
+}
+
+/* ================= conversation state ================= */
+let mode="idle";            /* idle | listen | reply | coach */
+let convo=false;            /* true while a back-and-forth is running */
+let epoch=0;                /* bumps on Stop all, cancels queued work */
+const listenMsg=()=>`Listening for ${them().name} — tap Stop when they finish`;
+
+/* ---------- them → English ---------- */
+let jobs=0,chain=Promise.resolve(),pausedForTTS=false,quickFails=0;
+function queueJob(fn){
+  jobs++;
+  chain=chain.then(fn).catch(err=>dlog("job error: "+(err&&err.message))).finally(()=>{
+    jobs--;
+    if(jobs===0){
+      if(pausedForTTS){pausedForTTS=false;if(mode==="listen")goListen(true)}
+      else if(mode==="listen"&&Mic.r&&Mic.r._live)status(listenMsg());
+    }});
+}
+async function speakEnglish(en){
+  if(S.mute&&mode==="listen"&&(Mic.r||Mic.starting)){micStop(true);pausedForTTS=true;dlog("mic paused while English plays")}
+  else if(!S.mute&&Mic.r)flushSegment(Mic.r);
+  const rec={t0:Date.now(),t1:Infinity,w:wordsOf(en)};spokenRecent.push(rec);if(spokenRecent.length>20)spokenRecent.shift();
+  status("Speaking English…");
+  await speak(en,ME.rec,+S.enRate);
+  rec.t1=Date.now();
+}
+function onThemPhrase(text,meta){
+  if(!/[\p{L}\p{N}]/u.test(text)||isDup(text))return;
+  dlog("heard them: "+text);
+  const ep=epoch;
+  const tp=translate(text,them().tr,ME.tr).catch(err=>{dlog("translate failed: "+err.message);status("Couldn't translate: "+err.message);return null});
+  queueJob(async()=>{
+    const en=await tp;if(!en||ep!==epoch)return;
+    if(meta&&meta.duringTTS&&isEcho(en,meta.at)){dlog("ignored echo: "+en);return}
+    $("coach").classList.remove("on");
+    addLog({who:"them",src:text,tr:en});
+    if(S.speakEn&&(mode==="listen"||(mode==="reply"&&!replyState)||mode==="idle"))await speakEnglish(en);
+  });
+}
+function restartSoon(){
+  const lived=performance.now()-lastOpen;
+  quickFails=lived<1500?quickFails+1:0;
+  if(quickFails>=6){dlog("mic keeps stopping — giving up");mode="idle";paint();micLight("off");status("The mic keeps stopping. Tap Listen to try again.");return}
+  const delay=quickFails>2?1500:200;
+  setTimeout(()=>{if(mode==="listen"&&!pausedForTTS&&!Mic.r&&!Mic.starting)goListen(true)},delay);
+}
+function goListen(quiet){
+  if(!SR){status("This browser can't do speech recognition. Use Chrome on Android or Safari on iPhone.");return}
+  mode="listen";paint();
+  if(!quiet)status(firstMic?"Allow the microphone if your phone asks. Wait for “Mic live” before they talk.":"Starting the mic…");
+  let announced=false;
+  micStart({lang:them().rec,continuous:true,silenceMs:+S.pause*1000,echoGuard:!S.mute,
+    onPhrase:onThemPhrase,
+    onLive:()=>{if(!announced&&!quiet)beep([660,990]);announced=true;if(jobs===0)status(listenMsg())},
+    onEnd:()=>{if(mode==="listen"&&!pausedForTTS)restartSoon()}});
+}
+
+/* ---------- Stop → my turn ---------- */
+async function toMyTurn(){
+  convo=true;mode="reply";paint();pausedForTTS=false;
+  micStop(true);                        /* anything they were mid-sentence on gets translated */
+  if(jobs>0){status("Finishing their translation…");while(jobs>0)await chain}
+  if(mode!=="reply"||replyState)return;
+  startReply();
+}
+
+/* ---------- my English reply ---------- */
+let replyState=null;
+function startReply(){
+  hush();mode="reply";paint();keepAwake(true);showInterim("");
+  const st={text:"",sent:false,timer:0,live:false,reopen:0};replyState=st;
+  status(firstMic?"Allow the microphone if your phone asks, then speak English.":"Starting the mic…");
+  let want;
+  const collect=()=>(st.text+" "+(Mic.r&&Mic.r._want===want?pendingText(Mic.r):"")).trim();
+  st.finish=()=>{
+    if(st.sent||replyState!==st)return;
+    const t=collect();st.sent=true;clearTimeout(st.timer);replyState=null;micStop(false);
+    if(!t){dlog("reply: nothing heard");status("Didn't catch that.");mode="idle";paint();
+      if(convo)setTimeout(()=>{if(convo&&mode==="idle")goListen(false)},900);return}
+    handleMyText(t);
+  };
+  want={lang:ME.rec,continuous:true,silenceMs:0,
+    onPhrase:t=>{st.text=(st.text+" "+t).trim()},
+    onActivity:()=>{clearTimeout(st.timer);if(+S.replyPause>0&&collect())st.timer=setTimeout(st.finish,+S.replyPause*1000)},
+    onLive:()=>{if(!st.live)beep([990,660]);st.live=true;status(+S.replyPause>0?"Your turn — speak English. Pause when done, or tap Send.":"Your turn — speak English, then tap Send.")},
+    onEnd:()=>{if(st.sent||replyState!==st)return;
+      if(collect()||!st.live||st.reopen>=2)st.finish();
+      else{st.reopen++;dlog("reply mic closed before you spoke — reopening");micStart(want)}}};
+  micStart(want);
+}
+async function handleMyText(en){
+  micStop(false);replyState=null;mode="coach";paint();status("Translating your reply…");dlog("my reply: "+en);
+  const ep=epoch;
+  try{const tr=await translate(en,ME.tr,them().tr);if(ep!==epoch||mode!=="coach")return;
+    addLog({who:"me",src:en,tr,lang:them().rec,trl:them().tr});startCoach(en,tr,them().rec,them().tr)}
+  catch(err){dlog("reply translate failed: "+err.message);status("Couldn't translate your reply: "+err.message);afterCoach(1500)}
+}
+
+/* ---------- coaching in chunks ---------- */
+let chunks=[],idx=0,runId=0,coachLang="";
+function paintChunks(){$("chunks").innerHTML=chunks.map((c,i)=>`<span class="ch ${i<idx?"done":""} ${i===idx?"cur":""}">${esc(c)}</span>`).join("")}
+function enterCoach(){if(mode!=="coach"){if(replyState){replyState.sent=true;replyState=null}micStop(false);pausedForTTS=false;mode="coach";paint()}}
+function closeCoach(){runId++;hush();$("coach").classList.remove("on")}
+function afterCoach(delay){
+  runId++;mode="idle";paint();
+  if(convo){status("Back to listening…");setTimeout(()=>{if(convo&&mode==="idle")goListen(false)},delay||0)}
+  else status("Done. Tap Repeat to hear it again, or Listen.");
+}
+async function playFrom(i){
+  enterCoach();const my=++runId;idx=i;
+  while(idx<chunks.length&&my===runId){
+    paintChunks();status(`Chunk ${idx+1} of ${chunks.length} — repeat after it`);
+    hush();await speak(chunks[idx],coachLang,+S.rate);
+    if(my!==runId)return;
+    if(S.mode==="manual"){status("Say it, then tap Next");return}
+    const words=chunks[idx].split(/\s+/).length;
+    await sleep((900+words*650)*+S.gap/(+S.rate));
+    if(my!==runId)return;idx++;
+  }
+  if(my===runId){idx=chunks.length;paintChunks();afterCoach(300)}
+}
+async function startCoach(en,target,lang,langTr){
+  enterCoach();coachLang=lang;chunks=chunkify(target,langTr||them().tr);idx=0;
+  $("coachEng").textContent="You: "+en;$("coach").classList.add("on");paintChunks();
+  if(S.preview){const my=++runId;status("Full sentence…");hush();await speak(target,coachLang,+S.rate);if(my!==runId)return;await sleep(700)}
+  playFrom(0);
+}
+$("cNext").onclick=()=>{unlockAudio();if(idx<chunks.length-1)playFrom(idx+1);else{enterCoach();runId++;idx=chunks.length;paintChunks();afterCoach(300)}};
+$("cBack").onclick=()=>{unlockAudio();playFrom(Math.max(0,Math.min(idx,chunks.length)-1))};
+$("cRep").onclick=async()=>{unlockAudio();if(!chunks.length)return;enterCoach();const i=Math.min(idx,chunks.length-1),my=++runId;idx=i;paintChunks();
+  hush();await speak(chunks[i],coachLang,+S.rate);if(my!==runId)return;
+  if(S.mode==="manual"){status("Say it, then tap Next");return}
+  await sleep(1500);if(my!==runId)return;
+  if(i>=chunks.length-1){idx=chunks.length;paintChunks();afterCoach(300)}else playFrom(i+1)};
+$("cDone").onclick=()=>{closeCoach();if(mode==="coach")afterCoach(0)};
+
+/* ================= buttons ================= */
+let wake=null;
+async function keepAwake(on){try{if(on&&!wake&&navigator.wakeLock){wake=await navigator.wakeLock.request("screen");wake.addEventListener("release",()=>{wake=null})}if(!on&&wake){await wake.release();wake=null}}catch{}}
+function setBtn(b,main,sub){b.querySelector("b").textContent=main;b.querySelector("span").textContent=sub}
+function paint(){
+  const L=$("bListen"),R=$("bReply");
+  L.classList.toggle("on",mode==="listen"||mode==="reply");R.classList.toggle("on",mode==="reply");
+  if(mode==="listen")setBtn(L,"Stop","→ now it's my turn");
+  else if(mode==="reply")setBtn(L,"Stop all","end the conversation");
+  else if(mode==="coach")setBtn(L,"Listen","skip to listening");
+  else setBtn(L,"Listen","them → English");
+  if(mode==="reply")setBtn(R,"Send","I'm done talking");else setBtn(R,"My reply","English → coach me");
+  $("bEnd").hidden=!(convo&&mode!=="idle");
+}
+function stopAll(){
+  convo=false;epoch++;if(replyState){replyState.sent=true;replyState=null}
+  pausedForTTS=false;micStop(false);closeCoach();mode="idle";paint();keepAwake(false);status("Stopped.");dlog("stopped by you");
+}
+$("bListen").onclick=()=>{
+  if(!SR){status("This browser can't do speech recognition. Use Chrome on Android or Safari on iPhone.");return}
+  unlockAudio();
+  if(mode==="idle"){convo=true;quickFails=0;keepAwake(true);goListen(false)}
+  else if(mode==="listen")toMyTurn();
+  else if(mode==="reply")stopAll();
+  else if(mode==="coach"){closeCoach();convo=true;mode="idle";goListen(false)}
+};
+$("bReply").onclick=()=>{
+  if(!SR){status("This browser can't do speech recognition — type your reply below.");return}
+  unlockAudio();
+  if(mode==="reply"){if(replyState)replyState.finish();return}
+  if(mode==="listen"){toMyTurn();return}
+  closeCoach();startReply();
+};
+$("bEnd").onclick=stopAll;
+$("typeForm").onsubmit=e=>{
+  e.preventDefault();const t=$("typeIn").value.trim();if(!t)return;unlockAudio();$("typeIn").value="";$("typeIn").blur();
+  if(mode==="listen"){convo=true;pausedForTTS=false;micStop(true)}
+  if(replyState){replyState.sent=true;replyState=null}
+  handleMyText(t);
+};
+$("log").addEventListener("click",e=>{const b=e.target.closest(".re");if(!b)return;unlockAudio();const h=history[+b.dataset.i];if(!h)return;
+  if(h.who==="them"){if(mode!=="reply"&&mode!=="coach")queueJob(()=>speakEnglish(h.tr))}
+  else{closeCoach();startCoach(h.src,h.tr,h.lang||them().rec,h.trl)}});
+
+$("pairQuick").onchange=e=>{S.lang=+e.target.value;$("sLang").value=S.lang;store.set("settings",S);if(mode==="listen")goListen(true)};
+$("bSet").onclick=()=>{loadSettingsUI();$("diag").textContent=diag.slice().reverse().join("\n");$("dlg").showModal()};
+$("dClose").onclick=()=>{const old=S.lang;readSettingsUI();$("dlg").close();if(old!==S.lang&&mode==="listen")goListen(true)};
+$("dClear").onclick=()=>{history=[];store.set("history",history);renderLog()};
+$("dCopy").onclick=async()=>{try{await navigator.clipboard.writeText(diag.join("\n"));$("dCopy").textContent="Copied"}catch{$("dCopy").textContent="Copy failed — screenshot it instead"}setTimeout(()=>$("dCopy").textContent="Copy log",2000)};
+$("diagBox").addEventListener("toggle",()=>{$("diag").textContent=diag.slice().reverse().join("\n")});
+
+/* ================= watchdog ================= */
+setInterval(()=>{
+  if(mode!=="listen"||pausedForTTS||document.visibilityState!=="visible")return;
+  const r=Mic.r,now=performance.now();
+  if(!r&&!Mic.starting){dlog("watchdog: mic wasn't running — restarting");goListen(true);return}
+  if(r&&!r._live&&!firstMic&&now-r._t0>9000){dlog("watchdog: mic never went live — retrying");status("Mic is slow to start — retrying…");goListen(true);return}
+  if(r&&r._live&&now-r._lastEvt>25000&&!pendingText(r)){dlog("watchdog: refreshing a quiet mic");goListen(true)}
+},3000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&mode!=="idle"){keepAwake(true);dlog("app visible again")}else if(document.visibilityState==="hidden")dlog("app hidden (screen off or switched apps)")});
+
+if(!SR)status("Speech recognition isn't available in this browser. Open it in Chrome (Android) or Safari (iPhone).");
+renderLog();paint();micLight("off");
+}
+</script>
+</body>
+</html>
